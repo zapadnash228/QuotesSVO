@@ -21,8 +21,8 @@ function hideAllSections() {
     quoteContent.classList.add('hidden');
 }
 
-// Функция для перевода на русский через Claude API
-async function translateToRussian(text, authorName) {
+// Функция для получения цитаты через Claude API
+async function fetchQuoteFromClaude() {
     try {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -34,31 +34,42 @@ async function translateToRussian(text, authorName) {
                 max_tokens: 1000,
                 messages: [{
                     role: 'user',
-                    content: `Переведи эту цитату на русский язык и предоставь информацию в формате JSON:
-            
-Цитата: "${text}"
-Автор: ${authorName}
+                    content: `Получи случайную вдохновляющую цитату от ZenQuotes API (https://zenquotes.io/api/random) и верни мне данные в формате JSON.
 
 Верни ТОЛЬКО JSON в таком формате (без markdown, без backticks):
 {
-  "text": "перевод цитаты на русский",
-  "year": "примерный год или период (например: '1960-е' или 'неизвестно')",
-  "purpose": "краткое объяснение цели или контекста цитаты (1-2 предложения на русском)"}`
+  "quote": "текст цитаты на английском",
+  "author": "автор цитаты",
+  "quoteRu": "перевод цитаты на русский",
+  "year": "примерный год или период",
+  "purpose": "краткое объяснение цели или контекста цитаты (1-2 предложения на русском)"
+}`
+                }],
+                tools: [{
+                    type: "web_search_20250305",
+                    name: "web_search"
                 }]
             })
         });
 
         const data = await response.json();
-        const content = data.content[0].text;
+        
+        // Собираем весь текстовый контент
+        let fullText = '';
+        for (const item of data.content) {
+            if (item.type === 'text') {
+                fullText += item.text;
+            }
+        }
         
         // Очищаем от возможных markdown backticks
-        const cleanedContent = content.replace(/```json|```/g, '').trim();
+        const cleanedContent = fullText.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(cleanedContent);
         
         return parsed;
     } catch (err) {
-        console.error('Translation error:', err);
-        return null;
+        console.error('Claude API error:', err);
+        throw new Error('Не удалось получить цитату');
     }
 }
 
@@ -74,39 +85,19 @@ async function fetchQuote() {
     loading.classList.remove('hidden');
     
     try {
-        // Получаем цитату из ZenQuotes API
-        const apiUrl = 'https://zenquotes.io/api/random';
-        const response = await fetch(apiUrl);
+        // Получаем цитату через Claude API
+        const quoteData = await fetchQuoteFromClaude();
         
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // ZenQuotes API возвращает массив с одной цитатой
-        if (!data || !data[0]) {
-            throw new Error('Неверный формат данных от API');
-        }
-        
-        const quoteData = {
-            q: data[0].q.trim(),
-            a: data[0].a || 'Unknown'
-        };
-        
-        // Переводим цитату через Claude API
-        const translatedData = await translateToRussian(quoteData.q, quoteData.a);
-        
-        if (!translatedData) {
-            throw new Error('Ошибка перевода цитаты');
+        if (!quoteData || !quoteData.quote) {
+            throw new Error('Неверный формат данных');
         }
         
         // Заполняем данные
-        translatedQuote.textContent = translatedData.text;
-        originalQuote.textContent = `Оригинал: "${quoteData.q}"`;
-        author.textContent = quoteData.a;
-        year.textContent = translatedData.year;
-        purpose.textContent = translatedData.purpose;
+        translatedQuote.textContent = quoteData.quoteRu;
+        originalQuote.textContent = `Оригинал: "${quoteData.quote}"`;
+        author.textContent = quoteData.author;
+        year.textContent = quoteData.year;
+        purpose.textContent = quoteData.purpose;
         
         // Показываем контент
         hideAllSections();
