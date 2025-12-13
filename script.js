@@ -21,8 +21,38 @@ function hideAllSections() {
     quoteContent.classList.add('hidden');
 }
 
-// Функция для получения цитаты через Claude API
-async function fetchQuoteFromClaude() {
+// Функция для получения цитаты через публичный CORS прокси
+async function fetchQuoteFromZenQuotes() {
+    try {
+        // Используем AllOrigins как CORS прокси для ZenQuotes
+        const proxyUrl = 'https://api.allorigins.win/raw?url=';
+        const apiUrl = encodeURIComponent('https://zenquotes.io/api/random');
+        
+        const response = await fetch(proxyUrl + apiUrl);
+        
+        if (!response.ok) {
+            throw new Error(`API недоступен (статус: ${response.status})`);
+        }
+        
+        const data = await response.json();
+        
+        // ZenQuotes возвращает массив с одной цитатой
+        if (!data || !data[0]) {
+            throw new Error('Неверный формат данных от API');
+        }
+        
+        return {
+            quote: data[0].q.trim(),
+            author: data[0].a || 'Unknown'
+        };
+    } catch (err) {
+        console.error('ZenQuotes API error:', err);
+        throw new Error('Не удалось получить цитату из ZenQuotes API');
+    }
+}
+
+// Функция для перевода на русский через Claude API
+async function translateToRussian(text, authorName) {
     try {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -34,42 +64,31 @@ async function fetchQuoteFromClaude() {
                 max_tokens: 1000,
                 messages: [{
                     role: 'user',
-                    content: `Получи случайную вдохновляющую цитату от ZenQuotes API (https://zenquotes.io/api/random) и верни мне данные в формате JSON.
+                    content: `Переведи эту цитату на русский язык и предоставь информацию в формате JSON:
+            
+Цитата: "${text}"
+Автор: ${authorName}
 
 Верни ТОЛЬКО JSON в таком формате (без markdown, без backticks):
 {
-  "quote": "текст цитаты на английском",
-  "author": "автор цитаты",
-  "quoteRu": "перевод цитаты на русский",
-  "year": "примерный год или период",
-  "purpose": "краткое объяснение цели или контекста цитаты (1-2 предложения на русском)"
-}`
-                }],
-                tools: [{
-                    type: "web_search_20250305",
-                    name: "web_search"
+  "text": "перевод цитаты на русский",
+  "year": "примерный год или период (например: '1960-е' или 'неизвестно')",
+  "purpose": "краткое объяснение цели или контекста цитаты (1-2 предложения на русском)"}`
                 }]
             })
         });
 
         const data = await response.json();
-        
-        // Собираем весь текстовый контент
-        let fullText = '';
-        for (const item of data.content) {
-            if (item.type === 'text') {
-                fullText += item.text;
-            }
-        }
+        const content = data.content[0].text;
         
         // Очищаем от возможных markdown backticks
-        const cleanedContent = fullText.replace(/```json|```/g, '').trim();
+        const cleanedContent = content.replace(/```json|```/g, '').trim();
         const parsed = JSON.parse(cleanedContent);
         
         return parsed;
     } catch (err) {
-        console.error('Claude API error:', err);
-        throw new Error('Не удалось получить цитату');
+        console.error('Translation error:', err);
+        throw new Error('Ошибка перевода цитаты');
     }
 }
 
@@ -85,19 +104,18 @@ async function fetchQuote() {
     loading.classList.remove('hidden');
     
     try {
-        // Получаем цитату через Claude API
-        const quoteData = await fetchQuoteFromClaude();
+        // Получаем цитату из ZenQuotes API через прокси
+        const quoteData = await fetchQuoteFromZenQuotes();
         
-        if (!quoteData || !quoteData.quote) {
-            throw new Error('Неверный формат данных');
-        }
+        // Переводим цитату через Claude API
+        const translatedData = await translateToRussian(quoteData.quote, quoteData.author);
         
         // Заполняем данные
-        translatedQuote.textContent = quoteData.quoteRu;
+        translatedQuote.textContent = translatedData.text;
         originalQuote.textContent = `Оригинал: "${quoteData.quote}"`;
         author.textContent = quoteData.author;
-        year.textContent = quoteData.year;
-        purpose.textContent = quoteData.purpose;
+        year.textContent = translatedData.year;
+        purpose.textContent = translatedData.purpose;
         
         // Показываем контент
         hideAllSections();
@@ -109,7 +127,7 @@ async function fetchQuote() {
         // Показываем ошибку
         hideAllSections();
         error.classList.remove('hidden');
-        errorMessage.textContent = `Ошибка загрузки цитаты: ${err.message}`;
+        errorMessage.textContent = `${err.message}. Попробуйте еще раз.`;
     } finally {
         // Включаем кнопку
         fetchQuoteBtn.disabled = false;
