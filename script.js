@@ -21,7 +21,8 @@ function hideAllSections() {
     quoteContent.classList.add('hidden');
 }
 
-// Функция для получения и перевода цитаты через Claude API
+// ВАЖНО: Весь код работает ТОЛЬКО через Claude API
+// Никаких прямых запросов к ZenQuotes из браузера!
 async function fetchAndTranslateQuote() {
     try {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -34,32 +35,29 @@ async function fetchAndTranslateQuote() {
                 max_tokens: 1500,
                 messages: [{
                     role: 'user',
-                    content: `Сделай GET запрос к API ZenQuotes: https://zenquotes.io/api/random
+                    content: `Получи случайную цитату из ZenQuotes API (https://zenquotes.io/api/random).
+API возвращает JSON массив: [{"q": "quote", "a": "author"}]
 
-Этот API возвращает массив с одной цитатой в формате:
-[{"q": "quote text", "a": "author name", "h": "html quote"}]
-
-После получения цитаты, переведи её на русский и верни мне данные в JSON формате.
-
-Верни ТОЛЬКО JSON (без markdown, без backticks):
+Переведи цитату на русский и верни JSON (без markdown):
 {
-  "quote": "оригинальная цитата на английском",
+  "quote": "оригинал на английском",
   "author": "автор",
   "quoteRu": "перевод на русский",
-  "year": "примерный год или период",
-  "purpose": "краткое объяснение контекста (1-2 предложения на русском)"
+  "year": "год/период",
+  "purpose": "контекст на русском (1-2 предложения)"
 }`
                 }]
             })
         });
 
         if (!response.ok) {
-            throw new Error(`Claude API недоступен (статус: ${response.status})`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Ошибка API: ${errorData.error?.message || response.status}`);
         }
 
         const data = await response.json();
         
-        // Получаем текст ответа
+        // Собираем текст из ответа
         let fullText = '';
         for (const item of data.content) {
             if (item.type === 'text') {
@@ -67,26 +65,26 @@ async function fetchAndTranslateQuote() {
             }
         }
         
-        // Очищаем от markdown
+        // Убираем markdown
         const cleanedContent = fullText.replace(/```json|```/g, '').trim();
         
         // Парсим JSON
         const parsed = JSON.parse(cleanedContent);
         
-        if (!parsed.quote || !parsed.author) {
-            throw new Error('Неверный формат данных');
+        if (!parsed.quote || !parsed.quoteRu) {
+            throw new Error('Неполные данные от API');
         }
         
         return parsed;
     } catch (err) {
-        console.error('API error:', err);
-        throw new Error('Не удалось получить цитату');
+        console.error('Ошибка получения цитаты:', err);
+        throw err;
     }
 }
 
-// Основная функция получения цитаты
+// Основная функция
 async function fetchQuote() {
-    // Отключаем кнопку
+    // Блокируем кнопку
     fetchQuoteBtn.disabled = true;
     buttonText.textContent = 'Загрузка...';
     buttonIcon.classList.add('spinning');
@@ -96,34 +94,34 @@ async function fetchQuote() {
     loading.classList.remove('hidden');
     
     try {
-        // Получаем и переводим цитату через Claude
+        // Получаем цитату через Claude API
         const quoteData = await fetchAndTranslateQuote();
         
         // Заполняем данные
         translatedQuote.textContent = quoteData.quoteRu;
         originalQuote.textContent = `Оригинал: "${quoteData.quote}"`;
         author.textContent = quoteData.author;
-        year.textContent = quoteData.year;
-        purpose.textContent = quoteData.purpose;
+        year.textContent = quoteData.year || 'неизвестно';
+        purpose.textContent = quoteData.purpose || 'Вдохновляющая цитата';
         
-        // Показываем контент
+        // Показываем результат
         hideAllSections();
         quoteContent.classList.remove('hidden');
         
     } catch (err) {
-        console.error('Error:', err);
+        console.error('Ошибка:', err);
         
         // Показываем ошибку
         hideAllSections();
         error.classList.remove('hidden');
-        errorMessage.textContent = `${err.message}. Попробуйте еще раз.`;
+        errorMessage.textContent = `${err.message}`;
     } finally {
-        // Включаем кнопку
+        // Разблокируем кнопку
         fetchQuoteBtn.disabled = false;
         buttonText.textContent = 'Получить новую цитату';
         buttonIcon.classList.remove('spinning');
     }
 }
 
-// Обработчик клика на кнопку
+// Слушатель события
 fetchQuoteBtn.addEventListener('click', fetchQuote);
