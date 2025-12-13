@@ -21,88 +21,78 @@ function hideAllSections() {
     quoteContent.classList.add('hidden');
 }
 
-// ВАЖНО: Весь код работает ТОЛЬКО через Claude API
-// Никаких прямых запросов к ZenQuotes из браузера!
-async function fetchAndTranslateQuote() {
+// Простые переводы для популярных авторов и базовые шаблоны
+const translations = {
+    authors: {
+        'Albert Einstein': 'Альберт Эйнштейн',
+        'Steve Jobs': 'Стив Джобс',
+        'Maya Angelou': 'Майя Энджелоу',
+        'Oscar Wilde': 'Оскар Уайльд',
+        'Mark Twain': 'Марк Твен',
+        'Buddha': 'Будда',
+        'Confucius': 'Конфуций',
+        'Aristotle': 'Аристотель',
+        'Socrates': 'Сократ',
+        'Plato': 'Платон'
+    }
+};
+
+// Функция для простого перевода через веб-API (Google Translate альтернатива)
+async function translateText(text) {
     try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 1500,
-                messages: [{
-                    role: 'user',
-                    content: `Получи случайную цитату из ZenQuotes API (https://zenquotes.io/api/random).
-API возвращает JSON массив: [{"q": "quote", "a": "author"}]
-
-Переведи цитату на русский и верни JSON (без markdown):
-{
-  "quote": "оригинал на английском",
-  "author": "автор",
-  "quoteRu": "перевод на русский",
-  "year": "год/период",
-  "purpose": "контекст на русском (1-2 предложения)"
-}`
-                }]
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Ошибка API: ${errorData.error?.message || response.status}`);
-        }
-
+        // Используем MyMemory Translation API (бесплатный, без ключа)
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|ru`;
+        const response = await fetch(url);
         const data = await response.json();
         
-        // Собираем текст из ответа
-        let fullText = '';
-        for (const item of data.content) {
-            if (item.type === 'text') {
-                fullText += item.text;
-            }
+        if (data.responseData && data.responseData.translatedText) {
+            return data.responseData.translatedText;
         }
-        
-        // Убираем markdown
-        const cleanedContent = fullText.replace(/```json|```/g, '').trim();
-        
-        // Парсим JSON
-        const parsed = JSON.parse(cleanedContent);
-        
-        if (!parsed.quote || !parsed.quoteRu) {
-            throw new Error('Неполные данные от API');
-        }
-        
-        return parsed;
+        return null;
     } catch (err) {
-        console.error('Ошибка получения цитаты:', err);
-        throw err;
+        console.error('Translation error:', err);
+        return null;
     }
 }
 
-// Основная функция
+// Функция для получения цитаты
 async function fetchQuote() {
-    // Блокируем кнопку
     fetchQuoteBtn.disabled = true;
     buttonText.textContent = 'Загрузка...';
     buttonIcon.classList.add('spinning');
     
-    // Показываем загрузку
     hideAllSections();
     loading.classList.remove('hidden');
     
     try {
-        // Получаем цитату через Claude API
-        const quoteData = await fetchAndTranslateQuote();
+        // Используем Quotable API - стабильный и с CORS поддержкой
+        const response = await fetch('https://api.quotable.io/random');
+        
+        if (!response.ok) {
+            throw new Error('API недоступен');
+        }
+        
+        const data = await response.json();
+        
+        if (!data.content) {
+            throw new Error('Неверные данные от API');
+        }
+        
+        const quote = data.content;
+        const authorName = data.author || 'Unknown';
+        
+        // Переводим цитату
+        const translatedText = await translateText(quote);
+        
+        // Переводим имя автора если есть в базе
+        const translatedAuthor = translations.authors[authorName] || authorName;
         
         // Заполняем данные
-        translatedQuote.textContent = quoteData.quoteRu;
-        originalQuote.textContent = `Оригинал: "${quoteData.quote}"`;
-        author.textContent = quoteData.author;
-        year.textContent = quoteData.year || 'неизвестно';
-        purpose.textContent = quoteData.purpose || 'Вдохновляющая цитата';
+        translatedQuote.textContent = translatedText || quote;
+        originalQuote.textContent = `Оригинал: "${quote}"`;
+        author.textContent = translatedAuthor;
+        year.textContent = 'неизвестно';
+        purpose.textContent = 'Вдохновляющая мысль от известной личности.';
         
         // Показываем результат
         hideAllSections();
@@ -111,17 +101,15 @@ async function fetchQuote() {
     } catch (err) {
         console.error('Ошибка:', err);
         
-        // Показываем ошибку
         hideAllSections();
         error.classList.remove('hidden');
-        errorMessage.textContent = `${err.message}`;
+        errorMessage.textContent = `Ошибка: ${err.message}. Попробуйте снова.`;
     } finally {
-        // Разблокируем кнопку
         fetchQuoteBtn.disabled = false;
         buttonText.textContent = 'Получить новую цитату';
         buttonIcon.classList.remove('spinning');
     }
 }
 
-// Слушатель события
+// Обработчик клика
 fetchQuoteBtn.addEventListener('click', fetchQuote);
