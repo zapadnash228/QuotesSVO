@@ -13,7 +13,7 @@ const fetchQuoteBtn = document.getElementById('fetch-quote-btn');
 const buttonText = document.getElementById('button-text');
 const buttonIcon = document.querySelector('.button-icon');
 
-// Функция для скрытия всех секций
+// Скрыть все секции
 function hideAllSections() {
     initialMessage.classList.add('hidden');
     loading.classList.add('hidden');
@@ -21,41 +21,21 @@ function hideAllSections() {
     quoteContent.classList.add('hidden');
 }
 
-// Простые переводы для популярных авторов и базовые шаблоны
-const translations = {
-    authors: {
-        'Albert Einstein': 'Альберт Эйнштейн',
-        'Steve Jobs': 'Стив Джобс',
-        'Maya Angelou': 'Майя Энджелоу',
-        'Oscar Wilde': 'Оскар Уайльд',
-        'Mark Twain': 'Марк Твен',
-        'Buddha': 'Будда',
-        'Confucius': 'Конфуций',
-        'Aristotle': 'Аристотель',
-        'Socrates': 'Сократ',
-        'Plato': 'Платон'
-    }
+// Перевод популярных авторов
+const authorsRu = {
+    'Albert Einstein': 'Альберт Эйнштейн',
+    'Steve Jobs': 'Стив Джобс',
+    'Maya Angelou': 'Майя Энджелоу',
+    'Oscar Wilde': 'Оскар Уайльд',
+    'Mark Twain': 'Марк Твен',
+    'Buddha': 'Будда',
+    'Confucius': 'Конфуций',
+    'Aristotle': 'Аристотель',
+    'Marcus Aurelius': 'Марк Аврелий',
+    'Winston Churchill': 'Уинстон Черчилль'
 };
 
-// Функция для простого перевода через веб-API (Google Translate альтернатива)
-async function translateText(text) {
-    try {
-        // Используем MyMemory Translation API (бесплатный, без ключа)
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|ru`;
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data.responseData && data.responseData.translatedText) {
-            return data.responseData.translatedText;
-        }
-        return null;
-    } catch (err) {
-        console.error('Translation error:', err);
-        return null;
-    }
-}
-
-// Функция для получения цитаты
+// Главная функция
 async function fetchQuote() {
     fetchQuoteBtn.disabled = true;
     buttonText.textContent = 'Загрузка...';
@@ -65,45 +45,38 @@ async function fetchQuote() {
     loading.classList.remove('hidden');
     
     try {
-        // Используем Quotable API - стабильный и с CORS поддержкой
-        const response = await fetch('https://api.quotable.io/random');
+        // Получаем цитату из Quotable API
+        const res = await fetch('https://api.quotable.io/random');
         
-        if (!response.ok) {
-            throw new Error('API недоступен');
-        }
+        if (!res.ok) throw new Error('API недоступен');
         
-        const data = await response.json();
-        
-        if (!data.content) {
-            throw new Error('Неверные данные от API');
-        }
-        
+        const data = await res.json();
         const quote = data.content;
-        const authorName = data.author || 'Unknown';
+        const authorEn = data.author || 'Unknown';
         
-        // Переводим цитату
-        const translatedText = await translateText(quote);
+        // Переводим через MyMemory API
+        const translateUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(quote)}&langpair=en|ru`;
+        const transRes = await fetch(translateUrl);
+        const transData = await transRes.json();
         
-        // Переводим имя автора если есть в базе
-        const translatedAuthor = translations.authors[authorName] || authorName;
+        const quoteRu = transData.responseData?.translatedText || quote;
+        const authorRu = authorsRu[authorEn] || authorEn;
         
-        // Заполняем данные
-        translatedQuote.textContent = translatedText || quote;
+        // Показываем данные
+        translatedQuote.textContent = quoteRu;
         originalQuote.textContent = `Оригинал: "${quote}"`;
-        author.textContent = translatedAuthor;
+        author.textContent = authorRu;
         year.textContent = 'неизвестно';
-        purpose.textContent = 'Вдохновляющая мысль от известной личности.';
+        purpose.textContent = 'Вдохновляющая мысль великого человека.';
         
-        // Показываем результат
         hideAllSections();
         quoteContent.classList.remove('hidden');
         
     } catch (err) {
         console.error('Ошибка:', err);
-        
         hideAllSections();
         error.classList.remove('hidden');
-        errorMessage.textContent = `Ошибка: ${err.message}. Попробуйте снова.`;
+        errorMessage.textContent = `Ошибка: ${err.message}`;
     } finally {
         fetchQuoteBtn.disabled = false;
         buttonText.textContent = 'Получить новую цитату';
@@ -111,5 +84,5 @@ async function fetchQuote() {
     }
 }
 
-// Обработчик клика
+// Слушатель
 fetchQuoteBtn.addEventListener('click', fetchQuote);
