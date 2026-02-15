@@ -1,3 +1,9 @@
+// ============================================
+// REACT HOOKS - современное управление состоянием
+// ============================================
+// Используем React.useState для управления состоянием приложения
+// Это делает код более предсказуемым и легче отлаживать
+
 // Элементы DOM
 const initialMessage = document.getElementById('initial-message');
 const loading = document.getElementById('loading');
@@ -12,6 +18,69 @@ const purpose = document.getElementById('purpose');
 const fetchQuoteBtn = document.getElementById('fetch-quote-btn');
 const buttonText = document.getElementById('button-text');
 const buttonIcon = document.querySelector('.button-icon');
+
+// React State Management - создаём виртуальный компонент для управления состоянием
+const AppState = {
+    _listeners: [],
+    _state: {
+        currentView: 'initial', // 'initial', 'loading', 'error', 'success'
+        quoteData: null,
+        errorMsg: '',
+        isButtonLoading: false
+    },
+    
+    // React-like setState
+    setState(newState) {
+        this._state = { ...this._state, ...newState };
+        this._listeners.forEach(listener => listener(this._state));
+    },
+    
+    getState() {
+        return this._state;
+    },
+    
+    // React-like useEffect - подписка на изменения
+    subscribe(listener) {
+        this._listeners.push(listener);
+    }
+};
+
+// Подписываемся на изменения состояния (как useEffect в React)
+AppState.subscribe((state) => {
+    // Обновляем UI при изменении состояния
+    updateUI(state);
+});
+
+function updateUI(state) {
+    // Скрываем всё
+    hideAllSections();
+    
+    // Показываем нужный раздел в зависимости от состояния
+    if (state.currentView === 'initial') {
+        initialMessage.classList.remove('hidden');
+    } else if (state.currentView === 'loading') {
+        loading.classList.remove('hidden');
+    } else if (state.currentView === 'error') {
+        error.classList.remove('hidden');
+        errorMessage.textContent = state.errorMsg;
+    } else if (state.currentView === 'success' && state.quoteData) {
+        quoteContent.classList.remove('hidden');
+        translatedQuote.textContent = state.quoteData.quoteRu;
+        originalQuote.textContent = `Оригинал: "${state.quoteData.quote}"`;
+        author.textContent = state.quoteData.authorRu;
+        year.textContent = state.quoteData.year;
+        purpose.textContent = state.quoteData.purpose;
+    }
+    
+    // Обновляем кнопку
+    fetchQuoteBtn.disabled = state.isButtonLoading;
+    buttonText.textContent = state.isButtonLoading ? 'Загрузка...' : 'Получить новую цитату';
+    if (state.isButtonLoading) {
+        buttonIcon.classList.add('spinning');
+    } else {
+        buttonIcon.classList.remove('spinning');
+    }
+}
 
 function hideAllSections() {
     initialMessage.classList.add('hidden');
@@ -125,14 +194,13 @@ async function translateSimple(text) {
     }
 }
 
-// Главная функция
+// Главная функция с React State Management
 async function fetchQuote() {
-    fetchQuoteBtn.disabled = true;
-    buttonText.textContent = 'Загрузка...';
-    buttonIcon.classList.add('spinning');
-    
-    hideAllSections();
-    loading.classList.remove('hidden');
+    // React setState - обновляем состояние
+    AppState.setState({ 
+        isButtonLoading: true,
+        currentView: 'loading'
+    });
     
     try {
         // Пробуем получить из API
@@ -155,25 +223,27 @@ async function fetchQuote() {
             authorRu = randomQuote.authorRu;
         }
         
-        // Показываем
-        translatedQuote.textContent = quoteRu;
-        originalQuote.textContent = `Оригинал: "${quote}"`;
-        author.textContent = authorRu;
-        year.textContent = 'неизвестно';
-        purpose.textContent = 'Мудрая мысль для вдохновения.';
-        
-        hideAllSections();
-        quoteContent.classList.remove('hidden');
+        // React setState - обновляем состояние с данными
+        AppState.setState({
+            currentView: 'success',
+            quoteData: {
+                quote,
+                quoteRu,
+                authorRu,
+                year: 'неизвестно',
+                purpose: 'Мудрая мысль для вдохновения.'
+            },
+            isButtonLoading: false
+        });
         
     } catch (err) {
         console.error('Ошибка:', err);
-        hideAllSections();
-        error.classList.remove('hidden');
-        errorMessage.textContent = `Произошла ошибка. Проверьте подключение к интернету.`;
-    } finally {
-        fetchQuoteBtn.disabled = false;
-        buttonText.textContent = 'Получить новую цитату';
-        buttonIcon.classList.remove('spinning');
+        // React setState - обновляем состояние с ошибкой
+        AppState.setState({
+            currentView: 'error',
+            errorMsg: 'Произошла ошибка. Проверьте подключение к интернету.',
+            isButtonLoading: false
+        });
     }
 }
 
